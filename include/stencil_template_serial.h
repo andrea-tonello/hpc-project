@@ -226,7 +226,7 @@ inline int update_plane (
             for ( int i = 1; i <= xsize; i++ )
                 {
                     new[ i ] = new[ IDX(i, ysize) ];
-                    new[ IDX(i, ysize+1) ] = new[ i ];
+                    new[ IDX(i, ysize+1) ] = new[ IDX(i, 1) ];
                 }
             for ( int j = 1; j <= ysize; j++ )
                 {

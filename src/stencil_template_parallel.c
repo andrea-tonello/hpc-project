@@ -511,13 +511,13 @@ int initialize (
 
 	
 	// ··································································
-	// allocae the needed memory
+	// allocate the needed memory
 	//
 	ret = memory_allocate( neighbours, *N, buffers, planes );
 	
 
 	// ··································································
-	// allocae the heat sources
+	// allocate the heat sources
 	//
 	ret = initialize_sources( Me, Ntasks, Comm, mysize, *Nsources, Nsources_local, Sources_local );
 	
