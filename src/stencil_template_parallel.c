@@ -40,6 +40,7 @@ int main(int argc, char **argv)
 	buffers_t buffers[2];
 	
 	int output_energy_stat_perstep;
+	int overlap;			// 1 = overlap comm/comp, 0 = old sequential behavior
 	
 	/* initialize MPI envrionment 
 	- MPI_COMM_WORLD: The global "phone network" connecting all processes
@@ -71,16 +72,17 @@ int main(int argc, char **argv)
 	
 	
 	/* argument checking and setting */
-	int ret = initialize ( 
-		&myCOMM_WORLD, 
-		Rank, Ntasks, 
-		argc, argv, 
-		&S, &N, 
+	int ret = initialize (
+		&myCOMM_WORLD,
+		Rank, Ntasks,
+		argc, argv,
+		&S, &N,
 		&periodic, &output_energy_stat_perstep,
+		&overlap,
 		neighbours, &Niterations,
-		&Nsources, &Nsources_local, 
+		&Nsources, &Nsources_local,
 		&Sources_local, &energy_per_source,
-		&planes[0], &buffers[0] 
+		&planes[0], &buffers[0]
 	);
 
 	if ( ret )
@@ -108,6 +110,7 @@ int main(int argc, char **argv)
 
 
 		/* -------------------------------------- */
+		int nreqs = 0;
 		{
 		double *data = planes[current].data;
 		uint xsize = planes[current].size[_x_];
@@ -139,7 +142,6 @@ int main(int argc, char **argv)
 		//     receive uses opposite direction as tag.
 		//     e.g. I send NORTH with tag=NORTH; my north neighbor
 		//     receives from SOUTH with tag=NORTH. Tags match.
-		int nreqs = 0;
 
 		MPI_Isend(buffers[SEND][NORTH], xsize, MPI_DOUBLE,
 		          neighbours[NORTH], NORTH, myCOMM_WORLD, &reqs[nreqs++]);
@@ -161,31 +163,84 @@ int main(int argc, char **argv)
 		MPI_Irecv(buffers[RECV][WEST], ysize, MPI_DOUBLE,
 		          neighbours[WEST], EAST, myCOMM_WORLD, &reqs[nreqs++]);
 
-		MPI_Waitall(nreqs, reqs, MPI_STATUSES_IGNORE);
-
-		// [C] Unpack received data into ghost cells
-		if (neighbours[NORTH] != MPI_PROC_NULL)
-			for (uint k = 0; k < xsize; k++)
-				data[IDX(k + 1, 0)] = buffers[RECV][NORTH][k];
-
-		if (neighbours[SOUTH] != MPI_PROC_NULL)
-			for (uint k = 0; k < xsize; k++)
-				data[IDX(k + 1, ysize + 1)] = buffers[RECV][SOUTH][k];
-
-		if (neighbours[EAST] != MPI_PROC_NULL)
-			for (uint k = 0; k < ysize; k++)
-				data[IDX(xsize + 1, k + 1)] = buffers[RECV][EAST][k];
-
-		if (neighbours[WEST] != MPI_PROC_NULL)
-			for (uint k = 0; k < ysize; k++)
-				data[IDX(0, k + 1)] = buffers[RECV][WEST][k];
-
 		#undef IDX
 		}
 		/* --------------------------------------  */
-		/* update grid points */
-		
-		update_plane( periodic, N, &planes[current], &planes[!current] );
+
+		if ( overlap )
+		{
+			// Overlap mode: compute interior while halo data is in flight
+			update_plane_interior( periodic, N, &planes[current], &planes[!current] );
+
+			// Now wait for halo exchange to complete
+			MPI_Waitall(nreqs, reqs, MPI_STATUSES_IGNORE);
+
+			// [C] Unpack received data into ghost cells
+			{
+			double *data = planes[current].data;
+			uint xsize = planes[current].size[_x_];
+			uint ysize = planes[current].size[_y_];
+			uint fxsize = xsize + 2;
+			#define IDX(i, j) ((j) * fxsize + (i))
+
+			if (neighbours[NORTH] != MPI_PROC_NULL)
+				for (uint k = 0; k < xsize; k++)
+					data[IDX(k + 1, 0)] = buffers[RECV][NORTH][k];
+
+			if (neighbours[SOUTH] != MPI_PROC_NULL)
+				for (uint k = 0; k < xsize; k++)
+					data[IDX(k + 1, ysize + 1)] = buffers[RECV][SOUTH][k];
+
+			if (neighbours[EAST] != MPI_PROC_NULL)
+				for (uint k = 0; k < ysize; k++)
+					data[IDX(xsize + 1, k + 1)] = buffers[RECV][EAST][k];
+
+			if (neighbours[WEST] != MPI_PROC_NULL)
+				for (uint k = 0; k < ysize; k++)
+					data[IDX(0, k + 1)] = buffers[RECV][WEST][k];
+
+			#undef IDX
+			}
+
+			// Compute border cells (depend on ghost data from halo exchange)
+			update_plane_border( periodic, N, &planes[current], &planes[!current] );
+		}
+		else
+		{
+			// Sequential mode: wait for all halos, then compute everything at once
+			MPI_Waitall(nreqs, reqs, MPI_STATUSES_IGNORE);
+
+			// [C] Unpack received data into ghost cells
+			{
+			double *data = planes[current].data;
+			uint xsize = planes[current].size[_x_];
+			uint ysize = planes[current].size[_y_];
+			uint fxsize = xsize + 2;
+			#define IDX(i, j) ((j) * fxsize + (i))
+
+			if (neighbours[NORTH] != MPI_PROC_NULL)
+				for (uint k = 0; k < xsize; k++)
+					data[IDX(k + 1, 0)] = buffers[RECV][NORTH][k];
+
+			if (neighbours[SOUTH] != MPI_PROC_NULL)
+				for (uint k = 0; k < xsize; k++)
+					data[IDX(k + 1, ysize + 1)] = buffers[RECV][SOUTH][k];
+
+			if (neighbours[EAST] != MPI_PROC_NULL)
+				for (uint k = 0; k < ysize; k++)
+					data[IDX(xsize + 1, k + 1)] = buffers[RECV][EAST][k];
+
+			if (neighbours[WEST] != MPI_PROC_NULL)
+				for (uint k = 0; k < ysize; k++)
+					data[IDX(0, k + 1)] = buffers[RECV][WEST][k];
+
+			#undef IDX
+			}
+
+			// Compute all cells at once (interior + border)
+			update_plane_interior( periodic, N, &planes[current], &planes[!current] );
+			update_plane_border( periodic, N, &planes[current], &planes[!current] );
+		}
 
 		/* output if needed */
 		if ( output_energy_stat_perstep )
@@ -246,7 +301,7 @@ int memory_allocate (
 );
 		      
 
-int initialize ( 
+int initialize (
 	MPI_Comm  *Comm,
 	int        Me,                  //   NEW: the rank of the calling process
 	int        Ntasks,              //   NEW :the total number of MPI ranks
@@ -256,6 +311,7 @@ int initialize (
 	vec2_t    *N,                   //   NEW: two-uint array defining the MPI tasks' grid
 	int       *periodic,            // periodic-boundary tag
 	int       *output_energy_stat,
+	int       *overlap,             // 1 = overlap comm/comp, 0 = sequential
 	int       *neighbours,          //   NEW: four-int array that gives back the neighbours of the calling task
 	int       *Niterations,         // how many iterations
 	int       *Nsources,            // how many heat sources
@@ -280,6 +336,7 @@ int initialize (
 	(*S)[_y_]         = 10000;
 	
 	*periodic         = 0;
+	*overlap          = 1;
 	*Nsources         = 4;
 	*Nsources_local   = 0;
 	*Sources_local    = NULL;
@@ -308,7 +365,7 @@ int initialize (
 	while ( 1 )
 	{
 		int opt;
-		while((opt = getopt(argc, argv, ":hx:y:e:E:n:o:p:v:")) != -1)
+		while((opt = getopt(argc, argv, ":hx:y:e:E:n:o:O:p:v:")) != -1)
 		{
 		switch( opt )
 		{
@@ -330,6 +387,9 @@ int initialize (
 		case 'o': *output_energy_stat = (atoi(optarg) > 0);
 			break;
 
+		case 'O': *overlap = (atoi(optarg) > 0);
+			break;
+
 		case 'p': *periodic = (atoi(optarg) > 0);
 			break;
 
@@ -344,6 +404,7 @@ int initialize (
 				"-e    how many energy sources on the plate [4]\n"
 				"-E    how many energy sources on the plate [1.0]\n"
 				"-n    how many iterations [1000]\n"
+				"-O    overlap comm/comp: 1=overlap, 0=sequential [1]\n"
 				"-p    whether periodic boundaries applies  [0 = false]\n\n"
 				);
 			halt = 1; }
