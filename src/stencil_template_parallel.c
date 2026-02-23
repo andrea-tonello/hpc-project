@@ -95,8 +95,10 @@ int main(int argc, char **argv)
 	
 	
 	int current = OLD;
+	double time_comp = 0, time_comm = 0;
+	double tc0, tc1, tp0, tp1;
 	double t1 = MPI_Wtime();   /* take wall-clock time. Used for performance measurement.*/
-	
+
 	for (int iter = 0; iter < Niterations; ++iter)
 	{
 		
@@ -111,6 +113,7 @@ int main(int argc, char **argv)
 
 		/* -------------------------------------- */
 		int nreqs = 0;
+		tc0 = MPI_Wtime();
 		{
 		double *data = planes[current].data;
 		uint xsize = planes[current].size[_x_];
@@ -165,14 +168,20 @@ int main(int argc, char **argv)
 
 		#undef IDX
 		}
+		tc1 = MPI_Wtime();
+		time_comm += tc1 - tc0;  // pack + post Isend/Irecv
 		/* --------------------------------------  */
 
 		if ( overlap )
 		{
 			// Overlap mode: compute interior while halo data is in flight
+			tp0 = MPI_Wtime();
 			update_plane_interior( periodic, N, &planes[current], &planes[!current] );
+			tp1 = MPI_Wtime();
+			time_comp += tp1 - tp0;
 
 			// Now wait for halo exchange to complete
+			tc0 = MPI_Wtime();
 			MPI_Waitall(nreqs, reqs, MPI_STATUSES_IGNORE);
 
 			// [C] Unpack received data into ghost cells
@@ -201,13 +210,19 @@ int main(int argc, char **argv)
 
 			#undef IDX
 			}
+			tc1 = MPI_Wtime();
+			time_comm += tc1 - tc0;  // wait + unpack
 
 			// Compute border cells (depend on ghost data from halo exchange)
+			tp0 = MPI_Wtime();
 			update_plane_border( periodic, N, &planes[current], &planes[!current] );
+			tp1 = MPI_Wtime();
+			time_comp += tp1 - tp0;
 		}
 		else
 		{
 			// Sequential mode: wait for all halos, then compute everything at once
+			tc0 = MPI_Wtime();
 			MPI_Waitall(nreqs, reqs, MPI_STATUSES_IGNORE);
 
 			// [C] Unpack received data into ghost cells
@@ -236,10 +251,15 @@ int main(int argc, char **argv)
 
 			#undef IDX
 			}
+			tc1 = MPI_Wtime();
+			time_comm += tc1 - tc0;  // wait + unpack
 
 			// Compute all cells at once (interior + border)
+			tp0 = MPI_Wtime();
 			update_plane_interior( periodic, N, &planes[current], &planes[!current] );
 			update_plane_border( periodic, N, &planes[current], &planes[!current] );
+			tp1 = MPI_Wtime();
+			time_comp += tp1 - tp0;
 		}
 
 		/* output if needed */
@@ -252,8 +272,17 @@ int main(int argc, char **argv)
 	
 	t1 = MPI_Wtime() - t1;
 
-	if (Rank == 0)
-		printf("Elapsed time: %f seconds\n", t1);
+	{
+		double max_comp, max_comm;
+		MPI_Reduce(&time_comp, &max_comp, 1, MPI_DOUBLE, MPI_MAX, 0, myCOMM_WORLD);
+		MPI_Reduce(&time_comm, &max_comm, 1, MPI_DOUBLE, MPI_MAX, 0, myCOMM_WORLD);
+
+		if (Rank == 0) {
+			printf("Elapsed time:    %f seconds\n", t1);
+			printf("  Computation:   %f seconds\n", max_comp);
+			printf("  Communication: %f seconds\n", max_comm);
+		}
+	}
 
 	output_energy_stat ( -1, &planes[!current], Niterations * Nsources*energy_per_source, Rank, &myCOMM_WORLD );
 	
