@@ -42,12 +42,7 @@ int main(int argc, char **argv)
 	int output_energy_stat_perstep;
 	int overlap;			// 1 = overlap comm/comp, 0 = old sequential behavior
 	
-	/* initialize MPI envrionment 
-	- MPI_COMM_WORLD: The global "phone network" connecting all processes
-	- MPI_Comm_rank: "What's my phone number?" (0, 1, 2, ...)
-	- MPI_Comm_size: "How many phones are in the network?"
-	- MPI_Comm_dup: "Give me my own private line" (prevents communication interference)
-	*/
+	/* initialize MPI envrionment */
 	{
 		int level_obtained;
 		
@@ -56,8 +51,8 @@ int main(int argc, char **argv)
 		// Starts MPI, but also tells MPI we want to use threads (omp)
 		MPI_Init_thread( &argc, &argv, MPI_THREAD_FUNNELED, &level_obtained );
 
-		// MPI_THREAD_FUNNELED: Thread safety level - means "only the main thread will make MPI calls." 
-		// This is the simplest safe mode when combining MPI + OpenMP
+		// MPI_THREAD_FUNNELED: Thread safety level. Means "only the main thread will make MPI calls." 
+		// The simplest safe mode when combining MPI + OpenMP
 		if ( level_obtained < MPI_THREAD_FUNNELED ) 
 		{	// If MPI can't provide the threading support we need, abort.
 			printf( "MPI_thread level obtained is %d instead of %d\n", level_obtained, MPI_THREAD_FUNNELED );
@@ -65,8 +60,8 @@ int main(int argc, char **argv)
 			exit(1); 
 		}
 		
-		MPI_Comm_rank(MPI_COMM_WORLD, &Rank);          // "What is my process ID?"
-		MPI_Comm_size(MPI_COMM_WORLD, &Ntasks);        // "How many total processes?"
+		MPI_Comm_rank(MPI_COMM_WORLD, &Rank);          // What is my process ID?
+		MPI_Comm_size(MPI_COMM_WORLD, &Ntasks);        // How many total processes?
 		MPI_Comm_dup (MPI_COMM_WORLD, &myCOMM_WORLD);  // Make a private copy of the communicator
 	}
 	
@@ -389,7 +384,7 @@ int initialize (
 		buffers[b][d] = NULL;
 	
 	// ··································································
-	// process the commadn line
+	// process the command line
 	// 
 	while ( 1 )
 	{
@@ -509,7 +504,7 @@ int initialize (
 	
 
 	// ··································································
-	// my cooridnates in the grid of processors
+	// my coordinates in the grid of processors
 	//
 	int X = Me % Grid[_x_];
 	int Y = Me / Grid[_x_];

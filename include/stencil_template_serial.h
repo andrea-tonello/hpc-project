@@ -116,7 +116,6 @@ inline int inject_energy (
                     plane[IDX(x, 0)] += energy;
             }
     }
-   // Remove the macro definition so it doesn't leak out and conflict with other code
    #undef IDX
     
     return 0;
@@ -138,8 +137,7 @@ inline int update_plane (
  * NOTE: in parallel, every MPI task will perform the calculation for its patch
  */
 {
-    // `register`: Old keyword (mostly ignored by modern compilers) suggesting 
-    // "keep this variable in CPU register for speed" rather than memory.
+    // `register`: keyword suggesting "keep this variable in CPU register for speed" rather than memory.
     const int register fxsize = size[_x_]+2;  // full x size (with ghosts)
     const int register fysize = size[_y_]+2;  // full y size
     const int register xsize = size[_x_];     // interior x size

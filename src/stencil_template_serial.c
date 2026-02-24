@@ -154,7 +154,7 @@ int initialize (
 	double freq = 0;
 	
 	// ··································································
-	// process the commadn line
+	// process the command line
 	// 
 	while ( 1 )
 	{

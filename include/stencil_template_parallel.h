@@ -32,7 +32,7 @@
 
 typedef unsigned int uint;
 
-// Weird syntax. What it means: writing `vec2_t myarr` is now equivalent to
+// Syntax means: writing `vec2_t myarr` is now equivalent to
 // writing `uint myarr[2]`, i.e. "array of 2 unsigned ints"
 typedef uint vec2_t[2];
 
@@ -62,14 +62,14 @@ extern int update_plane_interior (
     const int,
     const vec2_t,    // MPI grid
     const plane_t *,
-    plane_t *
+          plane_t *
 );
 
 extern int update_plane_border (
     const int,
     const vec2_t,    // MPI grid
     const plane_t *,
-    plane_t *
+          plane_t *
 );
 
 
