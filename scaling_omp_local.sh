@@ -22,7 +22,7 @@ EXEC=./stencil_parallel
 # Adjust -n (iterations) to control total runtime.
 XSIZE=5000
 YSIZE=5000
-NITER=1000
+NITER=500
 NSOURCES=25
 PERIODIC=0
 
@@ -58,6 +58,4 @@ for THREADS in 1 2 4; do
 done
 
 echo ""
-Results saved to ${OUTFILE}"
-
-
+echo "Results saved to ${OUTFILE}"

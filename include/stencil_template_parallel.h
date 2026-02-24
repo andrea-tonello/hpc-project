@@ -121,33 +121,37 @@ inline int inject_energy (
 )
 {
     const uint register sizex = plane->size[_x_]+2;
-    double * restrict data = plane->data;   // remember, `data` are the plane values themselves (2D grid)
-    
+    const uint register psx = plane->size[_x_];
+    const uint register psy = plane->size[_y_];
+    double * restrict data = plane->data;
+
    #define IDX( i, j ) ( (j)*sizex + (i) )
+
+    // Hoist loop-invariant periodic checks outside the source loop
+    const int periodic_x = periodic && (N[_x_] == 1);
+    const int periodic_y = periodic && (N[_y_] == 1);
+
     for (int s = 0; s < Nsources; s++)
         {
             int x = Sources[s][_x_];
             int y = Sources[s][_y_];
-            
+
             data[ IDX(x,y) ] += energy;
-            
-            if ( periodic )
-                {
-                    if ( (N[_x_] == 1)  )
-                    {
-                        if ( x == 1 )
-                            data[IDX(plane->size[_x_]+1, y)] += energy;
-                        if ( x == plane->size[_x_] )
-                            data[IDX(0, y)] += energy;
-                    }
-                    if ( (N[_y_] == 1) )
-                    {
-                        if ( y == 1 )
-                            data[IDX(x, plane->size[_y_]+1)] += energy;
-                        if ( y == plane->size[_y_] )
-                            data[IDX(x, 0)] += energy;
-                    }
-                }                
+
+            if ( periodic_x )
+            {
+                if ( x == 1 )
+                    data[IDX(psx+1, y)] += energy;
+                if ( x == psx )
+                    data[IDX(0, y)] += energy;
+            }
+            if ( periodic_y )
+            {
+                if ( y == 1 )
+                    data[IDX(x, psy+1)] += energy;
+                if ( y == psy )
+                    data[IDX(x, 0)] += energy;
+            }
         }
  #undef IDX
     
@@ -167,7 +171,6 @@ inline int update_plane_interior (
 )
 {
     uint register fxsize = oldplane->size[_x_]+2;
-
     uint register xsize = oldplane->size[_x_];
     uint register ysize = oldplane->size[_y_];
 
@@ -176,13 +179,16 @@ inline int update_plane_interior (
     double * restrict old = oldplane->data;
     double * restrict new = newplane->data;
 
+    const double alpha_self  = 0.5;    // weight for center cell
+    const double alpha_neigh = 0.125;  // weight for each neighbor (1/4 * 1/2)
+
     #pragma omp parallel for collapse(2) schedule(static)
     for (uint j = 2; j <= ysize - 1; j++)
         for (uint i = 2; i <= xsize - 1; i++)
             {
                 new[ IDX(i,j) ] =
-                    old[ IDX(i,j) ] / 2.0 + ( old[IDX(i-1, j)] + old[IDX(i+1, j)] +
-                                               old[IDX(i, j-1)] + old[IDX(i, j+1)] ) /4.0 / 2.0;
+                    old[ IDX(i,j) ] * alpha_self + ( old[IDX(i-1, j)] + old[IDX(i+1, j)] +
+                                                     old[IDX(i, j-1)] + old[IDX(i, j+1)] ) * alpha_neigh;
             }
 
    #undef IDX
@@ -210,31 +216,38 @@ inline int update_plane_border (
     double * restrict old = oldplane->data;
     double * restrict new = newplane->data;
 
+    const double alpha_self  = 0.5;    // weight for center cell
+    const double alpha_neigh = 0.125;  // weight for each neighbor (1/4 * 1/2)
+
     // Top row (j=1, all columns)
+    #pragma omp parallel for schedule(static)
     for (uint i = 1; i <= xsize; i++)
         new[ IDX(i,1) ] =
-            old[ IDX(i,1) ] / 2.0 + ( old[IDX(i-1, 1)] + old[IDX(i+1, 1)] +
-                                       old[IDX(i, 0)]   + old[IDX(i, 2)] ) /4.0 / 2.0;
+            old[ IDX(i,1) ] * alpha_self + ( old[IDX(i-1, 1)] + old[IDX(i+1, 1)] +
+                                              old[IDX(i, 0)]   + old[IDX(i, 2)] ) * alpha_neigh;
 
     // Bottom row (j=ysize, all columns)
     if (ysize > 1)
+        #pragma omp parallel for schedule(static)
         for (uint i = 1; i <= xsize; i++)
             new[ IDX(i,ysize) ] =
-                old[ IDX(i,ysize) ] / 2.0 + ( old[IDX(i-1, ysize)] + old[IDX(i+1, ysize)] +
-                                               old[IDX(i, ysize-1)] + old[IDX(i, ysize+1)] ) /4.0 / 2.0;
+                old[ IDX(i,ysize) ] * alpha_self + ( old[IDX(i-1, ysize)] + old[IDX(i+1, ysize)] +
+                                                      old[IDX(i, ysize-1)] + old[IDX(i, ysize+1)] ) * alpha_neigh;
 
     // Left column (i=1, skip corners already done by top/bottom rows)
+    #pragma omp parallel for schedule(static)
     for (uint j = 2; j <= ysize - 1; j++)
         new[ IDX(1,j) ] =
-            old[ IDX(1,j) ] / 2.0 + ( old[IDX(0, j)]   + old[IDX(2, j)] +
-                                       old[IDX(1, j-1)] + old[IDX(1, j+1)] ) /4.0 / 2.0;
+            old[ IDX(1,j) ] * alpha_self + ( old[IDX(0, j)]   + old[IDX(2, j)] +
+                                              old[IDX(1, j-1)] + old[IDX(1, j+1)] ) * alpha_neigh;
 
     // Right column (i=xsize, skip corners already done by top/bottom rows)
     if (xsize > 1)
+        #pragma omp parallel for schedule(static)
         for (uint j = 2; j <= ysize - 1; j++)
             new[ IDX(xsize,j) ] =
-                old[ IDX(xsize,j) ] / 2.0 + ( old[IDX(xsize-1, j)] + old[IDX(xsize+1, j)] +
-                                               old[IDX(xsize, j-1)] + old[IDX(xsize, j+1)] ) /4.0 / 2.0;
+                old[ IDX(xsize,j) ] * alpha_self + ( old[IDX(xsize-1, j)] + old[IDX(xsize+1, j)] +
+                                                      old[IDX(xsize, j-1)] + old[IDX(xsize, j+1)] ) * alpha_neigh;
 
     // Periodic boundary copies (only when a single MPI task spans that dimension)
     if ( periodic )
