@@ -8,12 +8,12 @@
 #SBATCH -A uTS25_Tornator_0
 #SBATCH -t 00:30:00
 #SBATCH --job-name=omp_scaling
+#SBATCH --output=omp_scaling.out
 
 # OpenMP Scaling
 # 1 MPI task, vary OMP_NUM_THREADS: 1,2,4,8,16,32,56,84,112
 # Fixed problem size (strong scaling within a single node)
 
-module load gcc/12.2.0
 module load openmpi/4.1.6--gcc--12.2.0
 
 EXEC=./stencil_parallel
@@ -35,7 +35,7 @@ export OMP_PROC_BIND=close
 # csv header
 echo "threads,elapsed,computation,communication" > ${OUTFILE}
 
-for THREADS in 1 2 4; do
+for THREADS in 1 2 4 8 16 32 56 84 112; do
 
     export OMP_NUM_THREADS=${THREADS}
 
