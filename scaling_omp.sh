@@ -15,6 +15,7 @@
 # Fixed problem size (strong scaling within a single node)
 
 module load openmpi/4.1.6--gcc--12.2.0
+mpicc -fopenmp -O2 -I include -o stencil_parallel src/stencil_template_parallel.c
 
 EXEC=./stencil_parallel
 
@@ -41,9 +42,9 @@ for THREADS in 1 2 4 8 16 32 56 84 112; do
 
     echo "Running with OMP_NUM_THREADS=${THREADS}"
 
-    OUTPUT=$(mpirun -np 1 ${EXEC} \
+    OUTPUT=$(mpirun -np 1 --bind-to none ${EXEC} \
         -x ${XSIZE} -y ${YSIZE} -n ${NITER} \
-        -e ${NSOURCES} -p ${PERIODIC} -o 1 -O 0)
+        -e ${NSOURCES} -p ${PERIODIC} -o 0 -O 0)
 
     ELAPSED=$(echo "${OUTPUT}" | grep "Elapsed time:" | awk '{print $3}')
     COMP=$(echo "${OUTPUT}" | grep "Computation:" | awk '{print $2}')

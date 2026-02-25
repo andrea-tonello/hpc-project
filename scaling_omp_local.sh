@@ -15,6 +15,8 @@
 # Fixed problem size (strong scaling within a single node)
 # ============================================================
 
+mpicc -fopenmp -O2 -I include -o stencil_parallel src/stencil_template_parallel.c
+
 EXEC=./stencil_parallel
 
 # Problem parameters - large enough so 1-thread run isn't too long
@@ -41,7 +43,7 @@ for THREADS in 1 2 4; do
     echo "Running with OMP_NUM_THREADS=${THREADS}"
 
     # Run and capture output
-    OUTPUT=$(mpirun -np 1 ${EXEC} \
+    OUTPUT=$(mpirun -np 1 --bind-to none ${EXEC} \
         -x ${XSIZE} -y ${YSIZE} -n ${NITER} \
         -e ${NSOURCES} -p ${PERIODIC} -o 1 -O 0)
 
