@@ -182,14 +182,38 @@ inline int update_plane_interior (
     const double alpha_self  = 0.5;    // weight for center cell
     const double alpha_neigh = 0.125;  // weight for each neighbor (1/4 * 1/2)
 
+    // 2D cache blocking: tile sizes chosen so each tile's working set fits in L2 (2 MB).
+    // Override at compile time with -DTILE_I=N -DTILE_J=M to tune.
+   #ifndef TILE_I
+   #define TILE_I 256
+   #endif
+   #ifndef TILE_J
+   #define TILE_J 64
+   #endif
+
+    const uint i_start = 2, i_end = xsize - 1;
+    const uint j_start = 2, j_end = ysize - 1;
+
+    const uint ntiles_i = (i_end - i_start + TILE_I) / TILE_I;
+    const uint ntiles_j = (j_end - j_start + TILE_J) / TILE_J;
+
     #pragma omp parallel for collapse(2) schedule(static)
-    for (uint j = 2; j <= ysize - 1; j++)
-        for (uint i = 2; i <= xsize - 1; i++)
-            {
-                new[ IDX(i,j) ] =
-                    old[ IDX(i,j) ] * alpha_self + ( old[IDX(i-1, j)] + old[IDX(i+1, j)] +
-                                                     old[IDX(i, j-1)] + old[IDX(i, j+1)] ) * alpha_neigh;
-            }
+    for (uint tj = 0; tj < ntiles_j; tj++)
+        for (uint ti = 0; ti < ntiles_i; ti++)
+        {
+            const uint jj     = j_start + tj * TILE_J;
+            const uint ii     = i_start + ti * TILE_I;
+            const uint jj_end = (jj + TILE_J - 1 < j_end) ? jj + TILE_J - 1 : j_end;
+            const uint ii_end = (ii + TILE_I - 1 < i_end) ? ii + TILE_I - 1 : i_end;
+
+            for (uint j = jj; j <= jj_end; j++)
+                for (uint i = ii; i <= ii_end; i++)
+                {
+                    new[ IDX(i,j) ] =
+                        old[ IDX(i,j) ] * alpha_self + ( old[IDX(i-1, j)] + old[IDX(i+1, j)] +
+                                                         old[IDX(i, j-1)] + old[IDX(i, j+1)] ) * alpha_neigh;
+                }
+        }
 
    #undef IDX
     return 0;
