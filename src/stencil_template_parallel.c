@@ -768,13 +768,25 @@ int memory_allocate (
 	if ( planes_ptr[OLD].data == NULL )
 		// manage the malloc fail
 		;
-	memset ( planes_ptr[OLD].data, 0, frame_size * sizeof(double) );
 
 	planes_ptr[NEW].data = (double*)malloc( frame_size * sizeof(double) );
 	if ( planes_ptr[NEW].data == NULL )
 		// manage the malloc fail
 		;
-	memset ( planes_ptr[NEW].data, 0, frame_size * sizeof(double) );
+
+	// NUMA-aware first-touch: each thread zeroes the rows it will compute,
+	// causing Linux to allocate pages on that thread's local NUMA node.
+	// schedule(static) matches the distribution in update_plane_interior.
+	{
+		uint fxsize = planes_ptr[OLD].size[_x_] + 2;
+		uint ysize  = planes_ptr[OLD].size[_y_];
+		#pragma omp parallel for schedule(static)
+		for (uint j = 0; j < ysize + 2; j++)
+		{
+			memset( &planes_ptr[OLD].data[j * fxsize], 0, fxsize * sizeof(double) );
+			memset( &planes_ptr[NEW].data[j * fxsize], 0, fxsize * sizeof(double) );
+		}
+	}
 
 
 	// ··················································

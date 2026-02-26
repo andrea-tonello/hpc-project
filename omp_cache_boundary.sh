@@ -26,7 +26,7 @@
 
 
 module load openmpi/4.1.6--gcc--12.2.0
-mpicc -fopenmp -O2 -I include -o stencil_parallel src/stencil_template_parallel.c
+mpicc -fopenmp -O3 -march=native -I include -o stencil_parallel src/stencil_template_parallel.c
 
 EXEC=./stencil_parallel
 NITER=100
