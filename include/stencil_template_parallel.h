@@ -182,17 +182,30 @@ inline int update_plane_interior (
     const double alpha_self  = 0.5;    // weight for center cell
     const double alpha_neigh = 0.125;  // weight for each neighbor (1/4 * 1/2)
 
-    #pragma omp parallel for schedule(static)
-    for (uint j = 2; j <= ysize - 1; j++)
-    {
-        #pragma omp simd
-        for (uint i = 2; i <= xsize - 1; i++)
+    // 2D tiling: TILE chosen so old-plane tile data (TILE+2)^2 * 8 fits in L1 (48 KB).
+    // TILE=64 → (66)^2 * 8 = 34 KB < 48 KB. All stencil reads are L1 hits.
+   #define TILE 64
+
+    #pragma omp parallel for collapse(2) schedule(static)
+    for (uint jj = 2; jj < ysize; jj += TILE)
+        for (uint ii = 2; ii < xsize; ii += TILE)
         {
-            new[ IDX(i,j) ] =
-                old[ IDX(i,j) ] * alpha_self + ( old[IDX(i-1, j)] + old[IDX(i+1, j)] +
-                                                 old[IDX(i, j-1)] + old[IDX(i, j+1)] ) * alpha_neigh;
+            uint j_end = (jj + TILE < ysize) ? jj + TILE : ysize;
+            uint i_end = (ii + TILE < xsize) ? ii + TILE : xsize;
+
+            for (uint j = jj; j < j_end; j++)
+            {
+                #pragma omp simd
+                for (uint i = ii; i < i_end; i++)
+                {
+                    new[ IDX(i,j) ] =
+                        old[ IDX(i,j) ] * alpha_self + ( old[IDX(i-1, j)] + old[IDX(i+1, j)] +
+                                                         old[IDX(i, j-1)] + old[IDX(i, j+1)] ) * alpha_neigh;
+                }
+            }
         }
-    }
+
+   #undef TILE
 
    #undef IDX
     return 0;
