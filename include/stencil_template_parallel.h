@@ -183,7 +183,7 @@ inline int update_plane_interior (
     const double alpha_neigh = 0.125;  // weight for each neighbor (1/4 * 1/2)
 
     // 2D tiling: TILE chosen so old-plane tile data (TILE+2)^2 * 8 fits in L1 (48 KB).
-    // TILE=64 → (66)^2 * 8 = 34 KB < 48 KB. All stencil reads are L1 hits.
+    // TILE=64 -> (66)^2 * 8 = 34 KB < 48 KB. All stencil reads are L1 hits.
    #define TILE 64
 
     #pragma omp parallel for collapse(2) schedule(static)

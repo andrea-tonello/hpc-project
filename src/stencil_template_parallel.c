@@ -764,28 +764,39 @@ int memory_allocate (
 	// that will contains data form neighbouring MPI tasks
 	unsigned int frame_size = (planes_ptr[OLD].size[_x_]+2) * (planes_ptr[OLD].size[_y_]+2);
 
-	planes_ptr[OLD].data = (double*)malloc( frame_size * sizeof(double) );
+	// 64-byte aligned allocation for cache-line-aligned SIMD loads/stores
+	posix_memalign((void**)&planes_ptr[OLD].data, 64, frame_size * sizeof(double));
 	if ( planes_ptr[OLD].data == NULL )
 		// manage the malloc fail
 		;
 
-	planes_ptr[NEW].data = (double*)malloc( frame_size * sizeof(double) );
+	posix_memalign((void**)&planes_ptr[NEW].data, 64, frame_size * sizeof(double));
 	if ( planes_ptr[NEW].data == NULL )
 		// manage the malloc fail
 		;
 
-	// NUMA-aware first-touch: each thread zeroes the rows it will compute,
+	// NUMA-aware first-touch with tiled pattern matching update_plane_interior's
+	// collapse(2) tile distribution. Each thread touches the same tiles it will compute,
 	// causing Linux to allocate pages on that thread's local NUMA node.
-	// schedule(static) matches the distribution in update_plane_interior.
 	{
 		uint fxsize = planes_ptr[OLD].size[_x_] + 2;
 		uint ysize  = planes_ptr[OLD].size[_y_];
-		#pragma omp parallel for schedule(static)
-		for (uint j = 0; j < ysize + 2; j++)
-		{
-			memset( &planes_ptr[OLD].data[j * fxsize], 0, fxsize * sizeof(double) );
-			memset( &planes_ptr[NEW].data[j * fxsize], 0, fxsize * sizeof(double) );
-		}
+
+		#define TILE_FT 64
+		#pragma omp parallel for collapse(2) schedule(static)
+		for (uint jj = 0; jj < ysize + 2; jj += TILE_FT)
+			for (uint ii = 0; ii < fxsize; ii += TILE_FT)
+			{
+				uint j_end = (jj + TILE_FT < ysize + 2) ? jj + TILE_FT : ysize + 2;
+				uint i_end = (ii + TILE_FT < fxsize) ? ii + TILE_FT : fxsize;
+				for (uint j = jj; j < j_end; j++)
+					for (uint i = ii; i < i_end; i++)
+					{
+						planes_ptr[OLD].data[j * fxsize + i] = 0.0;
+						planes_ptr[NEW].data[j * fxsize + i] = 0.0;
+					}
+			}
+		#undef TILE_FT
 	}
 
 
