@@ -22,8 +22,8 @@ EXEC=./stencil_parallel
 # Problem parameters - large enough so 1-thread run isn't too long
 # but small enough to fit in memory on 1 node.
 # Adjust -n (iterations) to control total runtime.
-XSIZE=32768
-YSIZE=32768
+XSIZE=24576
+YSIZE=24576
 NITER=100
 NSOURCES=25
 PERIODIC=0
